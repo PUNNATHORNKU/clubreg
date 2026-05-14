@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="th" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบลงทะเบียนชุมนุม เขวาไร่ศึกษา</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- Supabase CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Kanit', 'sans-serif'] },
+          colors: {
+            school: { yellow: '#FBBF24', yellowDark: '#D97706', black: '#111827', gray: '#F3F4F6', darkbg: '#1F2937' }
+          },
+          backgroundImage: { 'texture': "url('https://www.transparenttextures.com/patterns/cubes.png')" }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body { font-family: 'Kanit', sans-serif; transition: background-color 0.3s, color 0.3s; }
+    .loader { border: 4px solid rgba(251,191,36,.3); border-top: 4px solid #FBBF24; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    .page-section { display: none; animation: fadeIn 0.4s ease-in-out; }
+    .page-section.active { display: block; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background-color: #FBBF24; border-radius: 10px; }
+    .swal2-popup { font-family: 'Kanit', sans-serif !important; }
+  </style>
+</head>
+
+<body class="bg-school-gray dark:bg-school-darkbg text-school-black dark:text-gray-100 bg-texture bg-fixed min-h-screen">
+
+  <!-- Global Loader -->
+  <div id="global-loader" class="fixed inset-0 bg-white dark:bg-school-darkbg bg-opacity-90 dark:bg-opacity-90 z-50 flex flex-col justify-center items-center hidden">
+    <div class="loader mb-4"></div>
+    <p class="text-school-yellowDark dark:text-school-yellow font-medium" id="loader-text">กำลังประมวลผล...</p>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div id="change-password-modal" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-sm border-t-4 border-school-yellow relative">
+      <h3 class="text-xl font-bold mb-4 flex items-center"><span class="material-icons mr-2 text-school-yellow">vpn_key</span>เปลี่ยนรหัสผ่าน</h3>
+      <form id="change-password-form" onsubmit="submitChangePassword(event)">
+        <div class="mb-3">
+          <label class="block text-sm mb-1 font-medium">Username</label>
+          <input type="text" id="cp-username" required class="w-full px-3 py-2 rounded border dark:border-gray-600 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow transition">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm mb-1 font-medium">รหัสผ่านเดิม</label>
+          <input type="password" id="cp-old" required class="w-full px-3 py-2 rounded border dark:border-gray-600 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow transition">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm mb-1 font-medium">รหัสผ่านใหม่</label>
+          <input type="password" id="cp-new" required class="w-full px-3 py-2 rounded border dark:border-gray-600 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow transition">
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm mb-1 font-medium">ยืนยันรหัสผ่านใหม่</label>
+          <input type="password" id="cp-confirm" required class="w-full px-3 py-2 rounded border dark:border-gray-600 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow transition">
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="hideChangePasswordModal()" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded shadow-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition">ยกเลิก</button>
+          <button type="submit" class="px-4 py-2 bg-school-yellow hover:bg-school-yellowDark text-school-black font-bold rounded shadow transition">บันทึกรหัสผ่าน</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="bg-school-yellow dark:bg-school-black shadow-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex items-center">
+          <span class="material-icons text-school-black dark:text-school-yellow mr-2 text-3xl">menu_book</span>
+          <span class="font-bold text-xl text-school-black dark:text-school-yellow">โรงเรียนเขวาไร่ศึกษา</span>
+        </div>
+        <div class="flex items-center space-x-4">
+          <button onclick="toggleDarkMode()" class="p-2 rounded-full hover:bg-black hover:bg-opacity-10 transition">
+            <span class="material-icons text-school-black dark:text-school-yellow" id="theme-icon">dark_mode</span>
+          </button>
+          <button id="btn-logout" onclick="logout()" class="hidden bg-school-black text-school-yellow dark:bg-school-yellow dark:text-school-black px-4 py-2 rounded-md font-medium hover:opacity-80 transition shadow">
+            ออกจากระบบ
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Login -->
+    <div id="login-section" class="page-section active max-w-md mx-auto bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border-t-4 border-school-yellow">
+      <div class="text-center mb-8">
+        <img src="https://i.ibb.co/qFVzqtkn/Untitled-design-2.png" alt="School Logo" class="mx-auto h-20 w-auto mb-4 object-contain">
+        <h2 class="text-2xl font-bold">ระบบลงทะเบียนชุมนุม</h2>
+        <p class="text-sm text-gray-500">โรงเรียนเขวาไร่ศึกษา สพม.มหาสารคาม</p>
+      </div>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="mb-4">
+          <label class="block text-sm font-medium mb-1">Username</label>
+          <input type="text" id="username" required class="w-full px-4 py-2 rounded border dark:border-gray-600 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow transition">
+        </div>
+        <div class="mb-6">
+          <label class="block text-sm font-medium mb-1">Password</label>
+          <input type="password" id="password" required class="w-full px-4 py-2 rounded border dark:border-gray-600 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow transition">
+        </div>
+        <button type="submit" class="w-full bg-school-yellow hover:bg-school-yellowDark text-school-black font-bold py-2 px-4 rounded shadow-md transition">เข้าสู่ระบบ</button>
+      </form>
+      <div class="mt-4 text-center">
+        <button onclick="showChangePasswordModal()" class="text-sm text-school-yellowDark dark:text-school-yellow hover:underline flex items-center justify-center mx-auto transition">
+          <span class="material-icons text-sm mr-1">lock_reset</span> เปลี่ยนรหัสผ่าน
+        </button>
+      </div>
+      <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4 text-center">
+        <p class="text-[12px] text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
+          พัฒนาโดย ครูปัณณธร กุลาศรี<br>
+          <span class="text-[11px] opacity-80">งานวิจัยและสื่อนวัตกรรมทางการศึกษา</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- Student Section -->
+    <div id="student-section" class="page-section">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 mb-6 border-l-4 border-school-yellow flex flex-col sm:flex-row items-start sm:items-center justify-between">
+        <div class="flex items-center">
+          <span class="material-icons text-4xl text-gray-400 mr-4">face</span>
+          <div>
+            <h2 class="text-2xl font-bold mb-1" id="student-name-display">ชื่อ-นามสกุล</h2>
+            <p class="text-gray-600 dark:text-gray-300">
+              <span class="font-medium">รหัสประจำตัว:</span> <span id="student-id-display">-</span>
+              <span class="mx-2">|</span>
+              <span class="font-medium">ระดับชั้น:</span> <span id="student-grade-display">-</span>
+            </p>
+          </div>
+        </div>
+        <div class="mt-4 sm:mt-0">
+          <span class="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-sm font-semibold px-4 py-1.5 rounded-full shadow-sm flex items-center">
+            <span class="material-icons text-sm mr-1">school</span> นักเรียน
+          </span>
+        </div>
+      </div>
+
+      <div id="enrolled-status" class="hidden bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-8 text-center mb-6 shadow-sm">
+        <span class="material-icons text-green-500 text-6xl mb-4">check_circle</span>
+        <h3 class="text-2xl font-bold text-green-800 dark:text-green-400 mb-2">คุณลงทะเบียนสำเร็จแล้ว</h3>
+        <p class="text-lg text-green-700 dark:text-green-300">ชุมนุมที่คุณเลือกคือ: <span id="enrolled-club-name" class="font-bold border-b-2 border-green-500 pb-1"></span></p>
+        <p class="text-md text-green-600 dark:text-green-400 mt-2 font-medium">ครูผู้สอน: <span id="enrolled-club-teacher"></span></p>
+      </div>
+
+      <div id="available-clubs-container">
+        <h2 class="text-xl font-bold mb-6 border-l-4 border-school-yellow pl-4">เลือกชุมนุมที่ต้องการลงทะเบียน (เลือกได้ 1 ชุมนุม)</h2>
+        <div id="club-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </div>
+    </div>
+
+    <!-- Admin Section -->
+    <div id="admin-section" class="page-section">
+      <div class="flex flex-wrap gap-4 mb-6 border-b pb-4 dark:border-gray-700">
+        <button onclick="showAdminTab('manage-clubs')" id="btn-tab-manage-clubs" class="admin-tab-btn bg-school-yellow text-school-black px-4 py-2 rounded-md font-medium shadow-sm transition">จัดการชุมนุม</button>
+        <button onclick="showAdminTab('manage-users')" id="btn-tab-manage-users" class="admin-tab-btn bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 px-4 py-2 rounded-md font-medium shadow-sm transition">จัดการผู้ใช้งาน</button>
+        <button onclick="showAdminTab('summary')"      id="btn-tab-summary"      class="admin-tab-btn bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 px-4 py-2 rounded-md font-medium shadow-sm transition">สรุปผลการลงทะเบียน</button>
+        <button onclick="showAdminTab('reset')"        id="btn-tab-reset"        class="admin-tab-btn bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 px-4 py-2 rounded-md font-medium shadow-sm transition border border-red-200 dark:border-red-800 flex items-center">
+          <span class="material-icons text-sm mr-1">warning</span> รีเซ็ตระบบ
+        </button>
+      </div>
+
+      <!-- Tab: Clubs -->
+      <div id="tab-manage-clubs" class="admin-tab">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-school-yellow">
+            <h3 class="text-lg font-bold mb-4 flex items-center"><span class="material-icons mr-2 text-school-yellow">add_circle</span>เพิ่มชุมนุมใหม่</h3>
+            <form id="form-add-club" onsubmit="saveClub(event)">
+              <div class="mb-3">
+                <label class="block text-sm mb-1 font-medium">ชื่อชุมนุม</label>
+                <input type="text" id="club-name" required class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow">
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm mb-1 font-medium">ครูผู้รับผิดชอบ</label>
+                <select id="club-teacher" required class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow"></select>
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm mb-1 font-medium">ระดับชั้นที่เปิดรับ</label>
+                <div class="grid grid-cols-3 gap-2 p-2 border rounded dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
+                  <label class="text-sm"><input type="checkbox" name="grades" value="ม.1"> ม.1</label>
+                  <label class="text-sm"><input type="checkbox" name="grades" value="ม.2"> ม.2</label>
+                  <label class="text-sm"><input type="checkbox" name="grades" value="ม.3"> ม.3</label>
+                  <label class="text-sm"><input type="checkbox" name="grades" value="ม.4"> ม.4</label>
+                  <label class="text-sm"><input type="checkbox" name="grades" value="ม.5"> ม.5</label>
+                  <label class="text-sm"><input type="checkbox" name="grades" value="ม.6"> ม.6</label>
+                </div>
+              </div>
+              <div class="mb-5">
+                <label class="block text-sm mb-1 font-medium">จำนวนที่รับ (คน)</label>
+                <input type="number" id="club-max" required min="1" class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow">
+              </div>
+              <button type="submit" class="w-full bg-school-yellow hover:bg-school-yellowDark text-school-black font-bold py-2 rounded shadow-md flex justify-center items-center">
+                <span class="material-icons mr-1">save</span> บันทึกชุมนุม
+              </button>
+            </form>
+          </div>
+          <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg overflow-x-auto">
+            <h3 class="text-lg font-bold mb-4">รายชื่อชุมนุมทั้งหมด</h3>
+            <table class="w-full text-left border-collapse min-w-[500px]">
+              <thead>
+                <tr class="border-b-2 dark:border-gray-700">
+                  <th class="py-2 px-4">ชื่อชุมนุม</th>
+                  <th class="py-2 px-4">ระดับชั้น</th>
+                  <th class="py-2 px-4 text-center">ที่นั่ง</th>
+                  <th class="py-2 px-4 text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="table-clubs-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Users -->
+      <div id="tab-manage-users" class="admin-tab hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-school-black dark:border-school-yellow">
+            <h3 class="text-lg font-bold mb-4 flex items-center"><span class="material-icons mr-2 text-school-yellow">person_add</span>เพิ่มผู้ใช้งานใหม่</h3>
+            <form id="form-add-user" onsubmit="saveUser(event)">
+              <div class="mb-3">
+                <label class="block text-sm mb-1">ประเภท</label>
+                <select id="user-role" onchange="toggleGradeSelect()" class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow">
+                  <option value="student">นักเรียน</option>
+                  <option value="teacher">ครู</option>
+                  <option value="admin">ผู้ดูแลระบบ</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm mb-1">ชื่อ-นามสกุล</label>
+                <input type="text" id="user-fullname" required class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow">
+              </div>
+              <div id="grade-select-wrapper" class="mb-3">
+                <label class="block text-sm mb-1">ระดับชั้น</label>
+                <select id="user-grade" class="w-full p-2 rounded border dark:bg-gray-700 outline-none">
+                  <option value="ม.1">ม.1</option><option value="ม.2">ม.2</option>
+                  <option value="ม.3">ม.3</option><option value="ม.4">ม.4</option>
+                  <option value="ม.5">ม.5</option><option value="ม.6">ม.6</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm mb-1">Username (รหัสนักเรียน)</label>
+                <input type="text" id="user-username" required class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow">
+              </div>
+              <div class="mb-5">
+                <label class="block text-sm mb-1">Password</label>
+                <input type="text" id="user-password" required class="w-full p-2 rounded border dark:bg-gray-700 outline-none focus:ring-2 focus:ring-school-yellow">
+              </div>
+              <button type="submit" class="w-full bg-school-black dark:bg-school-yellow text-school-yellow dark:text-school-black font-bold py-2 rounded shadow flex justify-center items-center">
+                <span class="material-icons mr-1">save</span> บันทึกผู้ใช้
+              </button>
+            </form>
+
+            <div class="mt-6 border-t-2 pt-4 dark:border-gray-700">
+              <h4 class="text-sm font-bold mb-3 flex items-center"><span class="material-icons mr-1 text-school-yellow text-lg">upload_file</span>นำเข้าด้วยไฟล์ (Excel / CSV)</h4>
+              <div class="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-3">
+                <p class="text-xs text-blue-800 dark:text-blue-300 mb-2 font-medium flex items-center"><span class="material-icons text-sm mr-1">info</span>ตัวอย่างหัวคอลัมน์</p>
+                <div class="overflow-x-auto rounded border border-gray-300 dark:border-gray-600">
+                  <table class="w-full text-left text-xs border-collapse bg-white dark:bg-gray-800">
+                    <thead>
+                      <tr class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+                        <th class="border-r border-b border-gray-300 p-1.5 font-semibold">name</th>
+                        <th class="border-r border-b border-gray-300 p-1.5 font-semibold">username</th>
+                        <th class="border-r border-b border-gray-300 p-1.5 font-semibold">password</th>
+                        <th class="border-r border-b border-gray-300 p-1.5 font-semibold">role</th>
+                        <th class="border-b border-gray-300 p-1.5 font-semibold">grade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="text-gray-600 dark:text-gray-400">
+                        <td class="border-r p-1.5">สมชาย ใจดี</td>
+                        <td class="border-r p-1.5">54321</td>
+                        <td class="border-r p-1.5">1234</td>
+                        <td class="border-r p-1.5">student</td>
+                        <td class="p-1.5">ม.1</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="flex flex-col sm:flex-row items-center gap-2">
+                <input type="file" id="file-upload-users" accept=".csv,.xlsx,.xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-school-black hover:file:bg-gray-200 dark:file:bg-gray-700 dark:file:text-white transition">
+                <button type="button" onclick="handleFileUpload()" class="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 transition flex items-center justify-center whitespace-nowrap">นำเข้า</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg overflow-x-auto">
+            <h3 class="text-lg font-bold mb-4">รายชื่อผู้ใช้งาน</h3>
+            <table class="w-full text-left border-collapse min-w-[500px]">
+              <thead>
+                <tr class="border-b-2 dark:border-gray-700 text-sm">
+                  <th class="py-2 px-2">ชื่อ-นามสกุล</th>
+                  <th class="py-2 px-2">สิทธิ์</th>
+                  <th class="py-2 px-2">Username</th>
+                  <th class="py-2 px-2">ชั้น</th>
+                  <th class="py-2 px-2 text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="table-users-body" class="text-sm"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Summary -->
+      <div id="tab-summary" class="admin-tab hidden">
+        <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+          <h2 class="text-2xl font-bold text-gray-800 dark:text-white">สรุปผลการลงทะเบียน</h2>
+          <div class="flex gap-2">
+            <button onclick="exportToExcel()" class="flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-md">
+              <span class="material-icons mr-2">description</span> ส่งออก Excel
+            </button>
+            <button onclick="exportToPDF()" class="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition shadow-md">
+              <span class="material-icons mr-2">picture_as_pdf</span> ส่งออก PDF
+            </button>
+          </div>
+        </div>
+
+        <div id="summary-content">
+          <h2 class="text-xl font-bold border-l-4 border-school-yellow pl-4">1. สรุปชุมนุมและรายชื่อผู้ลงทะเบียน</h2>
+        </div>
+        <div id="summary-clubs-container"></div>
+
+        <h3 class="font-bold mb-3 border-l-4 border-red-500 pl-2 text-lg mt-8">2. รายชื่อนักเรียนที่ยังไม่ลงทะเบียน (<span id="unreg-count">0</span> คน)</h3>
+        <div class="mb-2">
+          <button onclick="toggleUnregStudents()" class="bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200 px-4 py-2 rounded text-sm flex items-center transition shadow-sm font-medium w-max">
+            <span class="material-icons text-sm mr-1" id="icon-toggle-unreg">visibility</span> ซ่อน/แสดงรายชื่อนักเรียน
+          </button>
+        </div>
+        <div class="overflow-x-auto hidden mb-6" id="unreg-students-container">
+          <table class="w-full text-left border-collapse min-w-[500px]">
+            <thead>
+              <tr class="border-b-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">
+                <th class="py-2 px-3 font-bold w-32">รหัสนักเรียน</th>
+                <th class="py-2 px-3 font-bold">ชื่อ-นามสกุล</th>
+                <th class="py-2 px-3 font-bold w-24 text-center">ชั้น</th>
+              </tr>
+            </thead>
+            <tbody id="unregistered-body"></tbody>
+          </table>
+        </div>
+        <hr class="my-8 border-gray-200 dark:border-gray-700">
+
+        <h3 class="font-bold mb-3 border-l-4 border-orange-500 pl-2 text-lg mt-8">3. รายชื่อครูที่ยังไม่มีชุมนุมรับผิดชอบ (<span id="unassigned-count">0</span> คน)</h3>
+        <div class="mb-2">
+          <button onclick="toggleUnassignedTeachers()" class="bg-orange-100 hover:bg-orange-200 text-orange-800 dark:bg-orange-900 dark:text-orange-200 px-4 py-2 rounded text-sm flex items-center transition shadow-sm font-medium w-max">
+            <span class="material-icons text-sm mr-1" id="icon-toggle-unassigned">visibility</span> ซ่อน/แสดงรายชื่อครู
+          </button>
+        </div>
+        <div class="overflow-x-auto hidden" id="unassigned-container">
+          <table class="w-full text-left border-collapse min-w-[400px]">
+            <thead>
+              <tr class="border-b-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">
+                <th class="py-2 px-3 font-bold w-24 text-center">ลำดับ</th>
+                <th class="py-2 px-3 font-bold">ชื่อ-นามสกุลครูผู้สอน</th>
+              </tr>
+            </thead>
+            <tbody id="unassigned-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Reset -->
+      <div id="tab-reset" class="admin-tab hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border-t-4 border-red-500">
+          <h2 class="text-2xl font-bold mb-2 text-red-600 dark:text-red-400 flex items-center"><span class="material-icons mr-2">warning_amber</span>ตั้งค่าเตรียมความพร้อมปีการศึกษาใหม่</h2>
+          <p class="text-gray-600 dark:text-gray-300 mb-8">โปรดระมัดระวัง ข้อมูลที่ถูกลบจะไม่สามารถกู้คืนได้ (ควร Export รายงานเก็บไว้ก่อนดำเนินการ)</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="border border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-900/10 p-5 rounded-lg text-center flex flex-col justify-between">
+              <div>
+                <div class="bg-orange-100 text-orange-600 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-3"><span class="material-icons">how_to_reg</span></div>
+                <h3 class="font-bold text-lg mb-2">1. ล้างข้อมูลการลงทะเบียน</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">รายชื่อเด็กและชุมนุมยังอยู่ครบ แต่สถานะทุกคนจะถูกรีเซ็ตเป็น "ยังไม่ลงทะเบียน"</p>
+              </div>
+              <button onclick="confirmReset('registrations')" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded shadow transition font-medium">ล้างการลงทะเบียน</button>
+            </div>
+            <div class="border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/10 p-5 rounded-lg text-center flex flex-col justify-between">
+              <div>
+                <div class="bg-red-100 text-red-600 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-3"><span class="material-icons">group_remove</span></div>
+                <h3 class="font-bold text-lg mb-2">2. ล้างบัญชีนักเรียน</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">ลบรายชื่อนักเรียนออกจากระบบทั้งหมด (บัญชีครูและผู้ดูแลระบบจะยังคงอยู่)</p>
+              </div>
+              <button onclick="confirmReset('students')" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded shadow transition font-medium">ล้างข้อมูลนักเรียน</button>
+            </div>
+            <div class="border border-pink-200 dark:border-pink-900 bg-pink-50 dark:bg-pink-900/10 p-5 rounded-lg text-center flex flex-col justify-between">
+              <div>
+                <div class="bg-pink-100 text-pink-600 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-3"><span class="material-icons">domain_disabled</span></div>
+                <h3 class="font-bold text-lg mb-2">3. ล้างวิชาชุมนุม</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">ลบรายวิชาชุมนุมที่เปิดรับทั้งหมดออกจากระบบ</p>
+              </div>
+              <button onclick="confirmReset('clubs')" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded shadow transition font-medium">ล้างข้อมูลชุมนุม</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teacher Dashboard -->
+    <div id="dashboard-section" class="page-section">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+        <div>
+          <h2 class="text-2xl font-bold border-l-4 border-school-yellow pl-4">สวัสดีครับคุณครู</h2>
+          <p class="text-gray-600 dark:text-gray-400 mt-2 text-lg" id="teacher-info-display">ครู: - | ชุมนุม: -</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="exportTeacherExcel()" class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 flex items-center transition">
+            <span class="material-icons mr-1">table_view</span> Excel
+          </button>
+          <button onclick="exportTeacherPDF()" class="bg-red-600 text-white px-4 py-2 rounded shadow hover:bg-red-700 flex items-center transition">
+            <span class="material-icons mr-1">picture_as_pdf</span> PDF
+          </button>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 overflow-x-auto" id="teacher-print-area">
+        <div id="pdf-header" class="hidden mb-6 text-center text-black">
+          <h2 class="text-2xl font-bold mb-1">รายชื่อนักเรียนชุมนุม: <span id="pdf-club-name"></span></h2>
+          <p class="text-lg">ครูผู้สอน: <span id="pdf-teacher-name"></span></p>
+        </div>
+        <table class="w-full text-left border-collapse min-w-[500px]" id="teacher-students-table">
+          <thead>
+            <tr class="border-b-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+              <th class="py-3 px-4 font-bold w-20 text-center">ลำดับ</th>
+              <th class="py-3 px-4 font-bold w-32">รหัสนักเรียน</th>
+              <th class="py-3 px-4 font-bold">ชื่อ-นามสกุล</th>
+              <th class="py-3 px-4 font-bold w-32">ระดับชั้น</th>
+              <th class="py-3 px-4 font-bold w-24 text-center action-col">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="table-teacher-students-body"></tbody>
+        </table>
+        <div id="teacher-no-data" class="hidden py-8 text-center text-gray-500 dark:text-gray-400">
+          <span class="material-icons text-4xl mb-2 opacity-50">person_off</span>
+          <p>ยังไม่มีนักเรียนลงทะเบียนในชุมนุมของคุณ</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end max-w-7xl -->
+
+  <!-- Load Supabase config & app logic -->
+  <script src="supabase.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
